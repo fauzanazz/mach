@@ -1,0 +1,142 @@
+name: Release (Signed + Notarized)
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_dmg:
+        description: "Also create, sign, notarize DMG"
+        type: boolean
+        required: false
+        default: false
+      run_preflight:
+        description: "Run strict preflight before signing"
+        type: boolean
+        required: false
+        default: true
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  sign-and-notarize:
+    name: Sign + Notarize
+    runs-on: macos-14
+    timeout-minutes: 60
+    permissions:
+      contents: write
+
+    env:
+      APP_NAME: mach
+      APP_BUNDLE_PATH: mach.app
+      DIST_DIR: dist
+      NOTARY_PROFILE: mach-notary
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate tag version matches Info.plist
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PLIST_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+
+          if [[ "${TAG_VERSION}" != "${PLIST_VERSION}" ]]; then
+            echo "Tag version (${TAG_VERSION}) does not match CFBundleShortVersionString (${PLIST_VERSION})"
+            exit 1
+          fi
+
+      - name: Resolve release options
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            if [[ "${{ inputs.run_preflight }}" == "true" ]]; then
+              echo "RUN_PREFLIGHT=1" >> "$GITHUB_ENV"
+            else
+              echo "RUN_PREFLIGHT=0" >> "$GITHUB_ENV"
+            fi
+
+            if [[ "${{ inputs.create_dmg }}" == "true" ]]; then
+              echo "CREATE_DMG=1" >> "$GITHUB_ENV"
+            else
+              echo "CREATE_DMG=0" >> "$GITHUB_ENV"
+            fi
+          else
+            echo "RUN_PREFLIGHT=1" >> "$GITHUB_ENV"
+            echo "CREATE_DMG=0" >> "$GITHUB_ENV"
+          fi
+
+      - name: Show toolchain versions
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Import Developer ID certificate
+        env:
+          APPLE_SIGNING_CERT_BASE64: ${{ secrets.APPLE_SIGNING_CERT_BASE64 }}
+          APPLE_SIGNING_CERT_PASSWORD: ${{ secrets.APPLE_SIGNING_CERT_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+        run: |
+          if [[ -z "${APPLE_SIGNING_CERT_BASE64}" || -z "${APPLE_SIGNING_CERT_PASSWORD}" || -z "${APPLE_KEYCHAIN_PASSWORD}" ]]; then
+            echo "Missing one or more signing secrets: APPLE_SIGNING_CERT_BASE64, APPLE_SIGNING_CERT_PASSWORD, APPLE_KEYCHAIN_PASSWORD"
+            exit 1
+          fi
+
+          CERT_PATH="$RUNNER_TEMP/signing-cert.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          echo -n "${APPLE_SIGNING_CERT_BASE64}" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "${APPLE_KEYCHAIN_PASSWORD}" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "${APPLE_KEYCHAIN_PASSWORD}" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "${APPLE_SIGNING_CERT_PASSWORD}" -A -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${APPLE_KEYCHAIN_PASSWORD}" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Configure notarytool profile
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          if [[ -z "${APPLE_ID}" || -z "${APPLE_TEAM_ID}" || -z "${APPLE_APP_SPECIFIC_PASSWORD}" ]]; then
+            echo "Missing one or more notarization secrets: APPLE_ID, APPLE_TEAM_ID, APPLE_APP_SPECIFIC_PASSWORD"
+            exit 1
+          fi
+
+          xcrun notarytool store-credentials "${NOTARY_PROFILE}" \
+            --apple-id "${APPLE_ID}" \
+            --team-id "${APPLE_TEAM_ID}" \
+            --password "${APPLE_APP_SPECIFIC_PASSWORD}"
+
+      - name: Sign and notarize
+        env:
+          SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+        run: |
+          if [[ -z "${SIGN_IDENTITY}" ]]; then
+            echo "Missing required secret: APPLE_SIGN_IDENTITY"
+            exit 1
+          fi
+
+          RUN_PREFLIGHT="${RUN_PREFLIGHT}" \
+          CREATE_DMG="${CREATE_DMG}" \
+          SIGN_IDENTITY="${SIGN_IDENTITY}" \
+          NOTARY_PROFILE="${NOTARY_PROFILE}" \
+          DIST_DIR="${DIST_DIR}" \
+          scripts/release-sign-notarize.sh
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mach-release-${{ github.ref_name }}-${{ github.run_number }}
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Publish GitHub release (tag builds)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

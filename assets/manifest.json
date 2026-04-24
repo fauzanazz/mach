@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "app": "mach",
+  "defaultPackId": "default",
+  "basePath": "sounds",
+  "packs": [
+    {
+      "id": "default",
+      "label": "Classic",
+      "kind": "sprite",
+      "audio": [
+        "sounds/sound.ogg"
+      ],
+      "config": null
+    },
+    {
+      "id": "cherrymx-black-pbt",
+      "label": "Cherry MX Black",
+      "kind": "sprite+config",
+      "audio": [
+        "sounds/cherrymx-black-pbt/sound.ogg"
+      ],
+      "config": "sounds/cherrymx-black-pbt/config.json"
+    },
+    {
+      "id": "cherrymx-blue-pbt",
+      "label": "Cherry MX Blue",
+      "kind": "sprite+config",
+      "audio": [
+        "sounds/cherrymx-blue-pbt/sound.ogg"
+      ],
+      "config": "sounds/cherrymx-blue-pbt/config.json"
+    },
+    {
+      "id": "cherrymx-brown-pbt",
+      "label": "Cherry MX Brown",
+      "kind": "sprite+config",
+      "audio": [
+        "sounds/cherrymx-brown-pbt/sound.ogg"
+      ],
+      "config": "sounds/cherrymx-brown-pbt/config.json"
+    },
+    {
+      "id": "cherrymx-red-pbt",
+      "label": "Cherry MX Red",
+      "kind": "sprite+config",
+      "audio": [
+        "sounds/cherrymx-red-pbt/sound.ogg"
+      ],
+      "config": "sounds/cherrymx-red-pbt/config.json"
+    },
+    {
+      "id": "mx-speed-silver",
+      "label": "MX Speed Silver",
+      "kind": "multi-sample+config",
+      "audio": [
+        "sounds/mx-speed-silver/mx-speed-silver-1.wav",
+        "sounds/mx-speed-silver/mx-speed-silver-2.wav",
+        "sounds/mx-speed-silver/mx-speed-silver-3.wav",
+        "sounds/mx-speed-silver/mx-speed-silver-4.wav",
+        "sounds/mx-speed-silver/mx-speed-silver-5.wav",
+        "sounds/mx-speed-silver/mx-speed-silver-6.wav"
+      ],
+      "config": "sounds/mx-speed-silver/config.json"
+    },
+    {
+      "id": "eg-oreo",
+      "label": "EG Oreo",
+      "kind": "sprite+config",
+      "audio": [
+        "sounds/eg-oreo/oreo.ogg"
+      ],
+      "config": "sounds/eg-oreo/config.json"
+    }
+  ]
+}

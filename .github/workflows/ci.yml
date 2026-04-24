@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-preflight:
+    name: Build + Preflight
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain versions
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Build (debug)
+        run: swift build
+
+      - name: Build (release)
+        run: swift build -c release
+
+      - name: Build app bundle
+        run: scripts/build-app.sh
+
+      - name: Run release preflight
+        run: scripts/release-preflight.sh
+
+      - name: Archive unsigned app bundle artifact
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent mach.app mach-unsigned-ci.zip
+
+      - name: Upload CI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mach-unsigned-app-${{ github.sha }}
+          path: mach-unsigned-ci.zip
+          if-no-files-found: error
